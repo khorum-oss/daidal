@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   .skope-boot x-dc,.skope-boot #dc-root{visibility:hidden}
+  .skope-boot body::before{content:'Loading Skope…';position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:15px/1.5 system-ui,sans-serif;color:#888}
   #skope-boot-error{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#111;color:#eee;font:15px/1.5 system-ui,sans-serif;text-align:center;padding:24px}
   #skope-boot-error button{font:inherit;padding:8px 18px;border-radius:6px;border:1px solid #666;background:#222;color:#eee;cursor:pointer}
 </style>
@@ -2450,7 +2451,7 @@ class Component extends DCLogic {
   // The signed-in user comes from the server (Cloudflare Access). There is no in-app login.
   async loadMe(){
     try{
-      const r=await fetch('/api/me',{headers:{accept:'application/json'}});
+      const r=await fetch('/api/me',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
       if(!r.ok) throw new Error('HTTP '+r.status);
       const u=await r.json();
       this.setState(s=>({profile:{name:u.name,email:u.email,title:u.title||''},screen:s.screen==='auth'?'projects':s.screen}),
@@ -2459,7 +2460,7 @@ class Component extends DCLogic {
       console.warn('Skope: could not load the signed-in user —',e&&e.message);
       if(document.getElementById('skope-boot-error')) return;
       const el=document.createElement('div'); el.id='skope-boot-error';
-      const msg=document.createElement('div'); msg.textContent='Skope couldn’t load your account. Your sign-in may have expired.';
+      const msg=document.createElement('div'); msg.textContent='Skope couldn’t load your account. Check your connection; your sign-in may also have expired.';
       const btn=document.createElement('button'); btn.textContent='Reload'; btn.onclick=()=>location.reload();
       el.append(msg,btn); document.body.appendChild(el);
     }

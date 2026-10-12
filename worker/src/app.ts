@@ -15,25 +15,30 @@ export async function handleRequest(
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
 
-  const email = await currentEmail(request, env, getKeys);
-  if (!email) return json({ error: "not signed in" }, 401);
+  try {
+    const email = await currentEmail(request, env, getKeys);
+    if (!email) return json({ error: "not signed in" }, 401);
 
-  if (url.pathname === "/api/me") {
-    if (request.method === "GET") return json(await ensureUser(env.DB, email));
-    if (request.method === "PUT") {
-      let body: unknown;
-      try {
-        body = await request.json();
-      } catch {
-        return json({ error: "body must be JSON" }, 400);
+    if (url.pathname === "/api/me") {
+      if (request.method === "GET") return json(await ensureUser(env.DB, email));
+      if (request.method === "PUT") {
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return json({ error: "body must be JSON" }, 400);
+        }
+        const parsed = parseProfilePatch(body);
+        if (!parsed.ok) return json({ error: parsed.error }, 400);
+        await ensureUser(env.DB, email);
+        return json(await updateUser(env.DB, email, parsed.patch));
       }
-      const parsed = parseProfilePatch(body);
-      if (!parsed.ok) return json({ error: parsed.error }, 400);
-      await ensureUser(env.DB, email);
-      return json(await updateUser(env.DB, email, parsed.patch));
+      return json({ error: "method not allowed" }, 405);
     }
-    return json({ error: "method not allowed" }, 405);
-  }
 
-  return json({ error: "not found" }, 404);
+    return json({ error: "not found" }, 404);
+  } catch (e) {
+    console.error("API request failed:", e);
+    return json({ error: "internal error" }, 500);
+  }
 }
