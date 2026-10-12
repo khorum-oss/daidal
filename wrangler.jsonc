@@ -5,9 +5,16 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "skope.khorum-oss.org", "custom_domain": true }],
   "assets": { "directory": "./web", "binding": "ASSETS" },
   "d1_databases": [
+    // database_id: the id printed by `wrangler d1 create skope`
     { "binding": "DB", "database_name": "skope", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
   ],
-  "vars": { "ACCESS_TEAM_DOMAIN": "", "ACCESS_AUD": "" }
+  "vars": {
+    // ACCESS_TEAM_DOMAIN: "https://" + the team domain, with no trailing slash
+    "ACCESS_TEAM_DOMAIN": "",
+    // ACCESS_AUD: the Access application's AUD tag
+    "ACCESS_AUD": ""
+  }
 }
