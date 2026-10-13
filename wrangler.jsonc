@@ -12,12 +12,12 @@
   "assets": { "directory": "./web", "binding": "ASSETS" },
   "d1_databases": [
     // database_id: the id printed by `wrangler d1 create skope`
-    { "binding": "DB", "database_name": "skope", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "skope", "database_id": "085c59a3-2e05-4ebe-95a5-e786c67fed16", "migrations_dir": "migrations" }
   ],
   "vars": {
     // ACCESS_TEAM_DOMAIN: "https://" + the team domain, with no trailing slash
-    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_TEAM_DOMAIN": "https://khorum.cloudflareaccess.com",
     // ACCESS_AUD: the Access application's AUD tag
-    "ACCESS_AUD": ""
+    "ACCESS_AUD": "b4a57a6a85b08a120ffe79fe46ddd8b748ede90dada54a04e40bc1029d68038e"
   }
 }
