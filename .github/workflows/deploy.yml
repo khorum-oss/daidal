@@ -6,6 +6,14 @@ on:
   pull_request:
     # closed: so stage passes to the next PR in line when the one on it is merged or closed.
     types: [opened, synchronize, reopened, ready_for_review, closed]
+  # Put a branch on stage by hand, ahead of the queue: Actions → deploy → Run workflow, then pick the branch under
+  # "Use workflow from". Tests run first. Only people with write access to the repository can run it.
+  workflow_dispatch:
+    inputs:
+      reset_data:
+        description: "Reset stage's data to the stage data (untick to deploy the code and keep stage's data)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -80,14 +88,17 @@ jobs:
   # from this repository that isn't a draft has it: its pushes re-deploy stage and reset its data to invented stage
   # data (stage/diagrams.ts). A newer PR waits, and says so on itself; when the PR on stage is merged or closed, the
   # next one in line deploys. Fork PRs never get it: GitHub gives them no secrets, and this job never runs their code
-  # with the Cloudflare token (never switch to pull_request_target). One-time setup: docs/stage.md.
+  # with the Cloudflare token (never switch to pull_request_target). It can also be run by hand on any branch of this
+  # repository (workflow_dispatch above): that branch goes on stage straight away, optionally keeping stage's data,
+  # until the PR first in line pushes again or the line moves on. One-time setup: docs/stage.md.
   stage:
     needs: test
     # needs.test is skipped on a closed PR (nothing to test), which still hands stage on; a failed test stops it.
     if: >-
-      always() && needs.test.result != 'failure' && needs.test.result != 'cancelled' &&
-      github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')
+      always() && needs.test.result != 'failure' && needs.test.result != 'cancelled' && (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]')) ||
+        (github.event_name == 'workflow_dispatch' && needs.test.result == 'success'))
     runs-on: ubuntu-latest
     # Stage's settings live in the `stage` environment (repository-level ones are read too); it must allow PR branches.
     environment: stage
@@ -137,6 +148,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.head_ref }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
+          EVENT: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           # "number sha branch" for each open PR in line, oldest first. Bots' PRs (Dependabot's) never take stage:
           # their runs get none of its secrets, so they would hold it without ever deploying.
@@ -145,6 +158,15 @@ jobs:
             | grep -v "^$PR " | sort -n || true)"
           first="$(printf '%s\n' "$line" | head -n 1)"
           first_pr="${first%% *}"
+          # Run by hand: the chosen branch goes on stage now, whatever the line says, and its PR (if it has one) is
+          # told. The PR first in line takes stage back on its next push.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            pr="$(gh api "repos/$REPO/pulls?state=open&head=$OWNER:$GITHUB_REF_NAME" --jq '.[0].number // empty' || true)"
+            { echo "deploy=true"; echo "manual=true"; echo "sha=$GITHUB_SHA"; echo "branch=$GITHUB_REF_NAME"; } >> "$GITHUB_OUTPUT"
+            if [ -n "$pr" ]; then echo "pr=$pr" >> "$GITHUB_OUTPUT"; fi
+            if [ -n "$first_pr" ] && [ "$first_pr" != "$pr" ]; then echo "first=$first_pr" >> "$GITHUB_OUTPUT"; fi
+            exit 0
+          fi
           if [ "$ACTION" = "closed" ]; then
             # The closed PR had stage if no open PR is older than it.
             if [ -n "$first" ] && [ "$first_pr" -gt "$PR" ]; then
@@ -195,12 +217,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.STAGE_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.STAGE_CLOUDFLARE_ACCOUNT_ID || vars.STAGE_CLOUDFLARE_ACCOUNT_ID }}
-      - if: steps.line.outputs.deploy == 'true'
+      - if: steps.line.outputs.deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.reset_data)
         name: Generate seed.sql
         run: npm run stage-seed
         env:
           STAGE_OWNER_EMAIL: ${{ secrets.STAGE_OWNER_EMAIL }}
-      - if: steps.line.outputs.deploy == 'true'
+      - if: steps.line.outputs.deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.reset_data)
         name: Reset the stage database to the stage data
         run: ./node_modules/.bin/wrangler d1 execute skope-stage --remote --file seed.sql -c wrangler.stage.jsonc --yes
         env:
@@ -224,10 +246,18 @@ jobs:
           LIVE_BRANCH: ${{ steps.line.outputs.branch }}
           FIRST: ${{ steps.line.outputs.first }}
           DRAFT: ${{ steps.line.outputs.draft }}
+          MANUAL: ${{ steps.line.outputs.manual }}
           THIS_PR: ${{ github.event.pull_request.number }}
         run: |
           marker='<!-- skope-stage -->'
-          if [ "$DEPLOYED" = "true" ]; then
+          # A branch put on stage by hand that has no open PR: nothing to tell.
+          [ "$DEPLOYED" = "true" ] && [ -z "$LIVE_PR" ] && exit 0
+          if [ "$MANUAL" = "true" ]; then
+            target="$LIVE_PR"
+            back="${FIRST:+ The next push to #$FIRST, first in line, takes stage back.}"
+            body="$marker
+          **Stage:** \`$LIVE_BRANCH\` at \`${LIVE_SHA:0:7}\` is live at https://skope-stage.khorum-oss.org (the app, with the stage data: https://skope-stage.khorum-oss.org/app/), put there by hand.$back"
+          elif [ "$DEPLOYED" = "true" ]; then
             target="$LIVE_PR"
             body="$marker
           **Stage:** \`$LIVE_BRANCH\` at \`${LIVE_SHA:0:7}\` is live at https://skope-stage.khorum-oss.org (the app, with the stage data: https://skope-stage.khorum-oss.org/app/)

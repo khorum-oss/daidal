@@ -10,6 +10,12 @@ The `stage` job in [`.github/workflows/deploy.yml`](../.github/workflows/deploy.
   deploys by itself, as its branch stands then (merge `main` into it to bring it up to date, which redeploys it).
   A draft never takes stage: mark it ready for review to put it in line. Nor does a bot's PR (Dependabot's): its
   runs get none of stage's secrets, so it would hold stage without deploying.
+- **Or by hand, ahead of the line.** **Actions → deploy → Run workflow**, pick the branch under *Use workflow
+  from*, and run: after `test` passes, that branch goes on stage straight away, whatever the line says. Untick
+  *Reset stage's data* to deploy the code and keep what's in stage's database (migrations still run). If the branch
+  has an open PR, its stage comment says it's live, put there by hand. Stage stays on it until the PR first in line
+  pushes again or the line moves on (a merge or close), which puts the line back in charge. Only people with write
+  access to the repository can run it. The `stage` environment must allow the branch you pick.
 - **Only the owner signs in.** Stage has its own Access application, narrower than prod's.
 - **Stage data is throwaway.** It holds only the invented data, never a real backup, and every deploy resets it.
 - **Fork PRs get no stage.** The job runs only for branches of this repository. Never change it to
